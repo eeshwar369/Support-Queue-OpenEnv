@@ -1,0 +1,5 @@
+.uv-cache/
+.docker/
+__pycache__/
+.pytest_cache/
+inference_results.json

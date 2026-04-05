@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openenv-support-queue-env"
+version = "0.1.0"
+description = "Real-world OpenEnv benchmark for SaaS support queue triage."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "openai>=1.55.0",
+    "openenv-core[core]>=0.2.2",
+    "pydantic>=2.8.0",
+    "requests>=2.32.0",
+    "uvicorn[standard]>=0.30.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+server = "support_queue_env.server.app:main"
+
+[tool.setuptools.packages.find]
+include = ["support_queue_env*"]

@@ -1,0 +1,11 @@
+spec_version: 1
+name: support_queue_env
+version: "0.1.0"
+description: Deterministic SaaS support triage benchmark for OpenEnv.
+type: environment
+runtime: fastapi
+app: server.app:app
+port: 8000
+action: SupportQueueAction
+observation: SupportQueueObservation
+state: SupportQueueState

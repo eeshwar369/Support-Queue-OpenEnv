@@ -225,7 +225,11 @@ def heuristic_action(observation: SupportQueueObservation) -> SupportQueueAction
 async def build_env() -> SupportQueueEnv:
     if ENV_BASE_URL:
         env = SupportQueueEnv(base_url=ENV_BASE_URL)
-        await env.connect()
+        connect = getattr(env, "connect", None)
+        if callable(connect):
+            maybe_coro = connect()
+            if asyncio.iscoroutine(maybe_coro):
+                await maybe_coro
         return env
     return await SupportQueueEnv.from_docker_image(LOCAL_IMAGE_NAME or "support-queue-openenv")
 

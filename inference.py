@@ -5,7 +5,12 @@ import json
 import os
 from typing import Any, List
 
-from openai import OpenAI
+try:
+    from openai import OpenAI
+    import openai as openai_module
+except ImportError:
+    OpenAI = None
+    import openai as openai_module
 
 from support_queue_env.client import SupportQueueEnv
 from support_queue_env.models import TaskCard, SupportQueueAction, SupportQueueObservation
@@ -40,8 +45,17 @@ def log_end(success: bool, steps: int, score: float, rewards: list[float]) -> No
     )
 
 
+def create_openai_client() -> Any:
+    if OpenAI is not None:
+        return OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or "placeholder")
+
+    openai_module.api_base = API_BASE_URL
+    openai_module.api_key = HF_TOKEN or "placeholder"
+    return openai_module
+
+
 def get_model_message(
-    client: OpenAI,
+    client: Any,
     step: int,
     observation: SupportQueueObservation,
     last_reward: float,
@@ -52,17 +66,30 @@ def get_model_message(
         f"Step: {step}. Last reward: {last_reward:.4f}. History: {history[-4:]}. Observation: {observation.model_dump_json()}"
     )
     try:
-        completion = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": "You are assisting a support triage agent."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.0,
-            max_tokens=MAX_TOKENS,
-            stream=False,
-        )
-        text = (completion.choices[0].message.content or "").strip()
+        if hasattr(client, "chat") and hasattr(client.chat, "completions"):
+            completion = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": "You are assisting a support triage agent."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.0,
+                max_tokens=MAX_TOKENS,
+                stream=False,
+            )
+            text = (completion.choices[0].message.content or "").strip()
+        else:
+            completion = client.ChatCompletion.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": "You are assisting a support triage agent."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.0,
+                max_tokens=MAX_TOKENS,
+                stream=False,
+            )
+            text = (completion["choices"][0]["message"]["content"] or "").strip()
         return text if text else "hello"
     except Exception as exc:
         print(f"[DEBUG] Model request failed: {exc}", flush=True)
@@ -188,7 +215,7 @@ def heuristic_action(observation: SupportQueueObservation) -> SupportQueueAction
     )
 
 
-async def run_task(client: OpenAI, env: SupportQueueEnv, task: TaskCard) -> dict[str, Any]:
+async def run_task(client: Any, env: SupportQueueEnv, task: TaskCard) -> dict[str, Any]:
     history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
@@ -252,7 +279,7 @@ async def run_task(client: OpenAI, env: SupportQueueEnv, task: TaskCard) -> dict
 
 
 async def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or "placeholder")
+    client = create_openai_client()
     tasks = available_tasks()
     results: list[dict[str, Any]] = []
     env: SupportQueueEnv | None = None

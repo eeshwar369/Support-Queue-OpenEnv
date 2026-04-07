@@ -20,6 +20,7 @@ API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
 HF_TOKEN = os.getenv("HF_TOKEN")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+ENV_BASE_URL = os.getenv("ENV_BASE_URL")
 
 BENCHMARK = "support_queue_env"
 SUCCESS_SCORE_THRESHOLD = 0.80
@@ -46,11 +47,14 @@ def log_end(success: bool, steps: int, score: float, rewards: list[float]) -> No
 
 
 def create_openai_client() -> Any:
+    if not HF_TOKEN:
+        return None
+
     if OpenAI is not None:
-        return OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or "placeholder")
+        return OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
     openai_module.api_base = API_BASE_URL
-    openai_module.api_key = HF_TOKEN or "placeholder"
+    openai_module.api_key = HF_TOKEN
     return openai_module
 
 
@@ -61,6 +65,9 @@ def get_model_message(
     last_reward: float,
     history: List[str],
 ) -> str:
+    if client is None:
+        return "hello"
+
     prompt = (
         "Return a short support-triage recommendation as JSON with fields priority, queue, disposition, summary, response. "
         f"Step: {step}. Last reward: {last_reward:.4f}. History: {history[-4:]}. Observation: {observation.model_dump_json()}"
@@ -215,6 +222,14 @@ def heuristic_action(observation: SupportQueueObservation) -> SupportQueueAction
     )
 
 
+async def build_env() -> SupportQueueEnv:
+    if ENV_BASE_URL:
+        env = SupportQueueEnv(base_url=ENV_BASE_URL)
+        await env.connect()
+        return env
+    return await SupportQueueEnv.from_docker_image(LOCAL_IMAGE_NAME or "support-queue-openenv")
+
+
 async def run_task(client: Any, env: SupportQueueEnv, task: TaskCard) -> dict[str, Any]:
     history: List[str] = []
     rewards: List[float] = []
@@ -285,7 +300,7 @@ async def main() -> None:
     env: SupportQueueEnv | None = None
 
     try:
-        env = await SupportQueueEnv.from_docker_image(LOCAL_IMAGE_NAME)
+        env = await build_env()
         for task in tasks:
             results.append(await run_task(client, env, task))
     except Exception as exc:

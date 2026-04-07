@@ -133,7 +133,11 @@ class SupportQueueEnv:
         return await asyncio.to_thread(self.reset_sync, **kwargs)
 
     def step_sync(self, action: SupportQueueAction) -> _Result:
-        response = requests.post(f"{self.base_url}/step", json=action.model_dump(), timeout=30)
+        response = requests.post(
+            f"{self.base_url}/step",
+            json={"action": action.model_dump()},
+            timeout=30,
+        )
         response.raise_for_status()
         return _Result(response.json())
 

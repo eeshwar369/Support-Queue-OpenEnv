@@ -25,7 +25,6 @@ def log_start(task: str, env: str, model: str) -> None:
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
 
-
 def log_step(step: int, action: str, reward: float, done: bool, error: str | None) -> None:
     error_value = "none" if error is None else error.replace("\n", " ")
     print(
@@ -34,13 +33,11 @@ def log_step(step: int, action: str, reward: float, done: bool, error: str | Non
     )
 
 
-
 def log_end(success: bool, steps: int, score: float, rewards: list[float]) -> None:
     print(
         f"[END] success={str(success).lower()} steps={steps} score={score:.4f} rewards={json.dumps([round(r, 4) for r in rewards])}",
         flush=True,
     )
-
 
 
 def get_model_message(
@@ -72,7 +69,6 @@ def get_model_message(
         return "hello"
 
 
-
 def available_tasks() -> list[TaskCard]:
     return [
         TaskCard(
@@ -84,7 +80,6 @@ def available_tasks() -> list[TaskCard]:
         )
         for task in TASKS
     ]
-
 
 
 def heuristic_action(observation: SupportQueueObservation) -> SupportQueueAction:
@@ -193,9 +188,7 @@ def heuristic_action(observation: SupportQueueObservation) -> SupportQueueAction
     )
 
 
-async def run_task(client: OpenAI, task: TaskCard) -> dict[str, Any]:
-    env = await SupportQueueEnv.from_docker_image(LOCAL_IMAGE_NAME)
-
+async def run_task(client: OpenAI, env: SupportQueueEnv, task: TaskCard) -> dict[str, Any]:
     history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
@@ -216,7 +209,13 @@ async def run_task(client: OpenAI, task: TaskCard) -> dict[str, Any]:
             _ = get_model_message(client, step, observation, last_reward, history)
             action = heuristic_action(observation)
 
-            result = await env.step(action)
+            try:
+                result = await env.step(action)
+            except Exception as exc:
+                action_payload = json.dumps(action.model_dump(), separators=(",", ":"), sort_keys=True)
+                log_step(step=step, action=action_payload, reward=0.0, done=True, error=str(exc))
+                break
+
             reward = result.reward or 0.0
             done = result.done
             error = None
@@ -237,11 +236,10 @@ async def run_task(client: OpenAI, task: TaskCard) -> dict[str, Any]:
         score = min(max(score, 0.0), 1.0)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
+    except Exception as exc:
+        print(f"[DEBUG] Task {task.task_id} failed: {exc}", flush=True)
+
     finally:
-        try:
-            await env.close()
-        except Exception as exc:
-            print(f"[DEBUG] env.close() error (container cleanup): {exc}", flush=True)
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
     return {
@@ -254,21 +252,48 @@ async def run_task(client: OpenAI, task: TaskCard) -> dict[str, Any]:
 
 
 async def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
-    results = []
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or "placeholder")
+    tasks = available_tasks()
+    results: list[dict[str, Any]] = []
+    env: SupportQueueEnv | None = None
 
-    for task in available_tasks():
-        results.append(await run_task(client, task))
+    try:
+        env = await SupportQueueEnv.from_docker_image(LOCAL_IMAGE_NAME)
+        for task in tasks:
+            results.append(await run_task(client, env, task))
+    except Exception as exc:
+        print(f"[DEBUG] Environment bootstrap failed: {exc}", flush=True)
+        for task in tasks:
+            log_start(task=task.task_id, env=BENCHMARK, model=MODEL_NAME)
+            log_end(success=False, steps=0, score=0.0, rewards=[])
+            results.append(
+                {
+                    "task_id": task.task_id,
+                    "score": 0.0,
+                    "steps": 0,
+                    "rewards": [],
+                    "success": False,
+                }
+            )
+    finally:
+        if env is not None:
+            try:
+                await env.close()
+            except Exception as exc:
+                print(f"[DEBUG] env.close() error (container cleanup): {exc}", flush=True)
 
-    aggregate = {
-        "benchmark": BENCHMARK,
-        "model": MODEL_NAME,
-        "average_score": round(sum(item["score"] for item in results) / len(results), 4) if results else 0.0,
-        "tasks": results,
-    }
-    with open("inference_results.json", "w", encoding="utf-8") as handle:
-        json.dump(aggregate, handle, indent=2)
+        aggregate = {
+            "benchmark": BENCHMARK,
+            "model": MODEL_NAME,
+            "average_score": round(sum(item["score"] for item in results) / len(results), 4) if results else 0.0,
+            "tasks": results,
+        }
+        with open("inference_results.json", "w", encoding="utf-8") as handle:
+            json.dump(aggregate, handle, indent=2)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as exc:
+        print(f"[DEBUG] Fatal inference error: {exc}", flush=True)

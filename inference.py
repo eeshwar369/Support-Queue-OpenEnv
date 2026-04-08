@@ -18,6 +18,7 @@ from support_queue_env.tasks import TASKS
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+API_KEY = os.getenv("API_KEY")
 HF_TOKEN = os.getenv("HF_TOKEN")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL")
@@ -47,14 +48,16 @@ def log_end(success: bool, steps: int, score: float, rewards: list[float]) -> No
 
 
 def create_openai_client() -> Any:
-    if not HF_TOKEN:
+    # The validator checks that model traffic goes through its injected proxy key.
+    # Keep HF_TOKEN defined for environment compatibility, but do not use it here.
+    if not API_KEY:
         return None
 
     if OpenAI is not None:
-        return OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+        return OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
     openai_module.api_base = API_BASE_URL
-    openai_module.api_key = HF_TOKEN
+    openai_module.api_key = API_KEY
     return openai_module
 
 

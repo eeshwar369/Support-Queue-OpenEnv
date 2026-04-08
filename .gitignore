@@ -2,5 +2,6 @@
 .docker/
 __pycache__/
 .pytest_cache/
+.env
 inference_results.json
 *.egg-info/

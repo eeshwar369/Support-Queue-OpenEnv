@@ -44,6 +44,7 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 PROXY_API_KEY = API_KEY or HF_TOKEN
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL")
+ALLOW_DIRECT_OPENAI = os.getenv("ALLOW_DIRECT_OPENAI") == "1"
 
 BENCHMARK = "support_queue_env"
 SUCCESS_SCORE_THRESHOLD = 0.80
@@ -73,6 +74,13 @@ def create_openai_client() -> Any:
     # Support both the newer API_KEY contract and the earlier HF_TOKEN contract.
     # In either case, all traffic still goes through API_BASE_URL.
     if not PROXY_API_KEY:
+        return None
+
+    if "api.openai.com" in API_BASE_URL and not ALLOW_DIRECT_OPENAI:
+        print(
+            "[DEBUG] Refusing to use direct OpenAI base URL. Set API_BASE_URL to the provided proxy, or set ALLOW_DIRECT_OPENAI=1 for local-only testing.",
+            flush=True,
+        )
         return None
 
     if OpenAI is not None:

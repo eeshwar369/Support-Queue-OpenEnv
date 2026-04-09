@@ -49,6 +49,11 @@ ALLOW_DIRECT_OPENAI = os.getenv("ALLOW_DIRECT_OPENAI") == "1"
 BENCHMARK = "support_queue_env"
 SUCCESS_SCORE_THRESHOLD = 0.80
 MAX_TOKENS = 250
+SCORE_EPSILON = 0.0001
+
+
+def clamp_task_score(score: float) -> float:
+    return min(max(score, SCORE_EPSILON), 1.0 - SCORE_EPSILON)
 
 
 def log_start(task: str, env: str, model: str) -> None:
@@ -303,7 +308,7 @@ async def run_task(client: Any, env: SupportQueueEnv, task: TaskCard) -> dict[st
     history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.0
+    score = clamp_task_score(0.0)
     success = False
 
     log_start(task=task.task_id, env=BENCHMARK, model=MODEL_NAME)
@@ -344,7 +349,7 @@ async def run_task(client: Any, env: SupportQueueEnv, task: TaskCard) -> dict[st
                 break
 
         score = sum(rewards) / len(rewards) if rewards else 0.0
-        score = min(max(score, 0.0), 1.0)
+        score = clamp_task_score(score)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as exc:
@@ -377,11 +382,11 @@ async def main() -> None:
         print(f"[DEBUG] Environment bootstrap failed: {exc}", flush=True)
         for task in tasks:
             log_start(task=task.task_id, env=BENCHMARK, model=MODEL_NAME)
-            log_end(success=False, steps=0, score=0.0, rewards=[])
+            log_end(success=False, steps=0, score=clamp_task_score(0.0), rewards=[])
             results.append(
                 {
                     "task_id": task.task_id,
-                    "score": 0.0,
+                    "score": clamp_task_score(0.0),
                     "steps": 0,
                     "rewards": [],
                     "success": False,
@@ -409,3 +414,6 @@ if __name__ == "__main__":
         asyncio.run(main())
     except Exception as exc:
         print(f"[DEBUG] Fatal inference error: {exc}", flush=True)
+
+
+

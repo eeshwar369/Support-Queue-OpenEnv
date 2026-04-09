@@ -8,6 +8,11 @@ from support_queue_env.models import GradingBreakdown, SupportQueueAction, Ticke
 from support_queue_env.tasks import TicketSpec
 
 PRIORITY_ORDER = ["P1", "P2", "P3", "P4"]
+SCORE_EPSILON = 0.001
+
+
+def _open_unit_interval(score: float) -> float:
+    return round(min(max(score, SCORE_EPSILON), 1.0 - SCORE_EPSILON), 4)
 
 
 def _normalize(text: str) -> str:
@@ -72,7 +77,7 @@ def grade_ticket(ticket: TicketSpec, action: SupportQueueAction) -> TicketFeedba
         + breakdown.response_score
         + breakdown.penalty
     )
-    breakdown.total = round(max(0.0, min(1.0, total)), 4)
+    breakdown.total = _open_unit_interval(total)
 
     matched_summary = summary_hits if ticket.summary_keywords else 0
     matched_response = response_hits if ticket.response_keywords else 0
@@ -92,3 +97,5 @@ def grade_ticket(ticket: TicketSpec, action: SupportQueueAction) -> TicketFeedba
         breakdown=breakdown,
         feedback=feedback,
     )
+
+
